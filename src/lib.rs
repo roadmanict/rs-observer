@@ -1,35 +1,42 @@
-use core::hash::Hash;
-use std::collections::HashMap;
+pub trait Observer {
+    type Item;
 
-pub type Subscriber<T> = fn(value: T);
-
-pub struct Publisher<E: Eq + Hash + Clone, T: Clone> {
-    handlers: HashMap<E, Vec<Subscriber<T>>>,
+    fn on_notify(&self, data: Self::Item);
 }
 
-impl<E: Eq + Hash + Clone, T: Clone> Publisher<E, T> {
-    pub fn new() -> Publisher<E, T> {
+pub struct Subject<'a, T> {
+    observers: Vec<&'a dyn Observer<Item = T>>,
+}
+
+impl<'a, T: Clone> Subject<'a, T> {
+    pub fn new() -> Self {
+        Default::default()
+    }
+
+    pub fn attach(&mut self, observer: &'a dyn Observer<Item = T>) {
+        self.observers.push(observer);
+    }
+
+    pub fn detach(&mut self, observer: &dyn Observer<Item = T>) {
+        self.observers.retain(|o| !std::ptr::eq(*o, observer));
+    }
+
+    pub fn num_observers(&self) -> usize {
+        self.observers.len()
+    }
+
+    pub fn notify(&self, data: &T) {
+        self.observers
+            .iter()
+            .for_each(|h| h.on_notify(data.clone()));
+    }
+}
+
+impl<'a, T: Clone> Default for Subject<'a, T> {
+    fn default() -> Self {
         Self {
-            handlers: HashMap::new(),
+            observers: Default::default(),
         }
-    }
-
-    pub fn subscribe(&mut self, event_type: impl Into<E>, listener: Subscriber<T>) {
-        let event: E = event_type.into();
-        self.handlers.entry(event.clone()).or_default();
-        self.handlers.get_mut(&event).map(|v| v.push(listener));
-    }
-
-    pub fn unsubscribe(&mut self, event_type: impl Into<E>, listener: Subscriber<T>) {
-        self.handlers
-            .get_mut(&event_type.into())
-            .map(|v| v.retain(|&h| h != listener));
-    }
-
-    pub fn notify(&self, event_type: impl Into<E>, value: T) {
-        self.handlers
-            .get(&event_type.into())
-            .map(|v| v.iter().for_each(|h| h(value.clone())));
     }
 }
 
@@ -37,16 +44,23 @@ impl<E: Eq + Hash + Clone, T: Clone> Publisher<E, T> {
 mod tests {
     use super::*;
 
+    struct TestObserver;
+
+    impl Observer for TestObserver {
+        type Item = String;
+
+        fn on_notify(&self, _data: Self::Item) {}
+    }
+
     #[test]
-    fn test_publisher_subscribe() {
-        #[derive(PartialEq, Eq, Hash, Clone)]
-        enum EventType {
-            First,
-            _Second,
-        }
+    fn can_add_and_remove_observer() {
+        let mut subject = Subject::new();
+        let observer = TestObserver;
 
-        let mut publisher: Publisher<EventType, String> = Publisher::new();
-
-        publisher.subscribe(EventType::First, |_s| ())
+        subject.attach(&observer);
+        assert_eq!(subject.num_observers(), 1);
+        subject.notify(&"String".to_string());
+        subject.detach(&observer);
+        assert_eq!(subject.num_observers(), 0);
     }
 }
