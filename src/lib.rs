@@ -9,15 +9,15 @@ pub struct Subject<'a, T> {
 }
 
 impl<'a, T: Clone> Subject<'a, T> {
-    pub fn new() -> Self {
-        Default::default()
+    pub fn new() -> Subject<'a, T> {
+        Subject { observers: vec![] }
     }
 
-    pub fn attach(&mut self, observer: &'a dyn Observer<Item = T>) {
+    pub fn attach(&mut self, observer: &'a impl Observer<Item = T>) {
         self.observers.push(observer);
     }
 
-    pub fn detach(&mut self, observer: &dyn Observer<Item = T>) {
+    pub fn detach(&mut self, observer: &impl Observer<Item = T>) {
         self.observers.retain(|o| !std::ptr::eq(*o, observer));
     }
 
@@ -32,21 +32,19 @@ impl<'a, T: Clone> Subject<'a, T> {
     }
 }
 
-impl<'a, T: Clone> Default for Subject<'a, T> {
-    fn default() -> Self {
-        Self {
-            observers: Default::default(),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     struct TestObserver;
+    struct TestObserverTwo;
 
     impl Observer for TestObserver {
+        type Item = String;
+
+        fn on_notify(&self, _data: Self::Item) {}
+    }
+    impl Observer for TestObserverTwo {
         type Item = String;
 
         fn on_notify(&self, _data: Self::Item) {}
@@ -54,13 +52,15 @@ mod tests {
 
     #[test]
     fn can_add_and_remove_observer() {
-        let mut subject = Subject::new();
+        let mut subject: Subject<String> = Subject::new();
         let observer = TestObserver;
+        let observer_two = TestObserverTwo;
 
         subject.attach(&observer);
         assert_eq!(subject.num_observers(), 1);
         subject.notify(&"String".to_string());
         subject.detach(&observer);
-        assert_eq!(subject.num_observers(), 0);
+        subject.attach(&observer_two);
+        assert_eq!(subject.num_observers(), 1);
     }
 }
